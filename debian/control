@@ -1,0 +1,74 @@
+Source: autosave
+Section: libdevel
+Priority: extra
+Maintainer: mdavidsaver <mdavidsaver@gmail.com>
+Build-Depends: debhelper (>= 9), epics-debhelper (>= 8.14~),
+               epics-dev,
+Standards-Version: 3.9.6
+Homepage: http://aps.anl.gov/bcda/synApps/autosave/autosave.html
+Vcs-Git: https://github.com/epicsdeb/autosave.git
+Vcs-Browser: https://github.com/epicsdeb/autosave
+
+Package: epics-autosave-dev
+Architecture: any
+Depends: libautosave5.7.1 (= ${binary:Version}),
+         ${shlibs:Depends}, ${misc:Depends},
+         ${epics:Depends},
+Conflicts: epics-synapps,
+Description: Bump-less reboot for IOCs
+ Persistence of field values across IOC restarts
+ .
+ This package contains headers and libraries needed at build time.
+
+Package: libautosave5.7.1
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+Conflicts: epics-synapps,
+Description: Bump-less reboot for IOCs
+ Persistence of field values across IOC restarts
+ .
+ This package contains runtime libraries
+
+Package: rtems-autosave-mvme2100
+Architecture: all
+Depends: epics-autosave-dev (>= ${source:Version}),
+         epics-autosave-dev (<< ${source:Version}.1~),
+         ${rtems:Depends}, ${misc:Depends},
+Conflicts: rtems-synapps-mvme2100,
+Description: Bump-less reboot for IOCs
+ Persistence of field values across IOC restarts
+ .
+ This package contains support for the MVME2100 VME SBC
+
+Package: rtems-autosave-mvme3100
+Architecture: all
+Depends: epics-autosave-dev (>= ${source:Version}),
+         epics-autosave-dev (<< ${source:Version}.1~),
+         ${rtems:Depends}, ${misc:Depends},
+Conflicts: rtems-synapps-mvme3100,
+Description: Bump-less reboot for IOCs
+ Persistence of field values across IOC restarts
+ .
+ This package contains support for the MVME3100 VME SBC
+
+Package: rtems-autosave-mvme5500
+Architecture: all
+Depends: epics-autosave-dev (>= ${source:Version}),
+         epics-autosave-dev (<< ${source:Version}.1~),
+         ${rtems:Depends}, ${misc:Depends},
+Conflicts: rtems-synapps-mvme5500,
+Description: Bump-less reboot for IOCs
+ Persistence of field values across IOC restarts
+ .
+ This package contains support for the MVME5500 VME SBC
+
+Package: rtems-autosave-pc386
+Architecture: all
+Depends: epics-autosave-dev (>= ${source:Version}),
+         epics-autosave-dev (<< ${source:Version}.1~),
+         ${rtems:Depends}, ${misc:Depends},
+Conflicts: rtems-synapps-pc386,
+Description: Bump-less reboot for IOCs
+ Persistence of field values across IOC restarts
+ .
+ This package contains support for the pc386 BSP
