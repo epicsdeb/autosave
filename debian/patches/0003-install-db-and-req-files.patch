@@ -1,7 +1,6 @@
-From 6c5a4aeadeb08035a51ed22f7a3169b0f1564ac5 Mon Sep 17 00:00:00 2001
 From: Daron Chabot <chabot@frib.msu.edu>
 Date: Thu, 19 May 2016 15:32:16 -0400
-Subject: [PATCH] install db and req files
+Subject: install db and req files
 
 ---
  asApp/Db/Makefile | 6 +++++-
@@ -24,6 +23,3 @@ index 983981d..5b2eb6f 100644
  
  #----------------------------------------------------
  # If <anyname>.db template is not named <anyname>*.template add
--- 
-2.1.4
-
