@@ -1,3 +1,12 @@
+autosave (5.7.1-2) unstable; urgency=medium
+
+  * missing rtems deps
+  * import patches from big synapps package
+    Severities in save_restoreStatus.db
+    Build against RTEMS 4.10
+
+ -- Michael Davidsaver <mdavidsaver@gmail.com>  Tue, 31 May 2016 14:43:34 -0400
+
 autosave (5.7.1-1) unstable; urgency=medium
 
   [ mdavidsaver ]
