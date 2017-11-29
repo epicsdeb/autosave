@@ -7,10 +7,10 @@ Subject: fixup format warning
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/asApp/src/save_restore.c b/asApp/src/save_restore.c
-index 7717a4f..4a84d8c 100644
+index 4de4405..385f52e 100644
 --- a/asApp/src/save_restore.c
 +++ b/asApp/src/save_restore.c
-@@ -1345,7 +1345,7 @@ STATIC int connect_list(struct chlist *plist, int verbose)
+@@ -1367,7 +1367,7 @@ STATIC int connect_list(struct chlist *plist, int verbose)
  	}
  	epicsSnprintf(SR_recentlyStr, STATUS_STR_LEN-1, "%s: %d of %d PV's connected", plist->save_file, n, m);
  	if (verbose) {

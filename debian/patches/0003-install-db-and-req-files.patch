@@ -3,23 +3,20 @@ Date: Thu, 19 May 2016 15:32:16 -0400
 Subject: install db and req files
 
 ---
- asApp/Db/Makefile | 6 +++++-
- 1 file changed, 5 insertions(+), 1 deletion(-)
+ asApp/Db/Makefile | 3 +++
+ 1 file changed, 3 insertions(+)
 
 diff --git a/asApp/Db/Makefile b/asApp/Db/Makefile
-index 983981d..5b2eb6f 100644
+index fe565d9..f77c241 100644
 --- a/asApp/Db/Makefile
 +++ b/asApp/Db/Makefile
-@@ -10,7 +10,11 @@ include $(TOP)/configure/CONFIG
- #----------------------------------------------------
- # Create and install (or just install) into <top>/db
- # databases, templates, substitutions like this
--#DB += xxx.db
-+DB += save_restoreStatus.db
-+DB += configMenu.db
+@@ -13,6 +13,9 @@ include $(TOP)/configure/CONFIG
+ #DB += xxx.db
+ DB += save_restoreStatus.db
+ DB += configMenu.db
 +DB += configMenu.req
 +DB += configMenuNames.req
 +DB += configMenu_settings.req
- 
  #----------------------------------------------------
  # If <anyname>.db template is not named <anyname>*.template add
+ # <anyname>_template = <templatename>
