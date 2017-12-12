@@ -146,6 +146,9 @@
 #include	<sys/stat.h>
 #include	<time.h>
 #include	<sys/types.h> /* for dirList */
+#ifdef vxWorks
+	#include	<version.h> /* for VxWorks VERSION */
+#endif
 
 #include	<dbDefs.h>
 #include	<cadef.h>		/* includes dbAddr.h */
@@ -168,8 +171,18 @@
 #include 	"osdNfs.h"              /* qiao: routine of os dependent code, for NFS */
 #include	"configMenuClient.h"
 
-#ifndef _WIN32
-  #define SET_FILE_PERMISSIONS 1
+#define SET_FILE_PERMISSIONS 1
+
+#ifdef _WIN32
+  #define SET_FILE_PERMISSIONS 0
+#endif
+
+#ifdef vxWorks
+	#if defined(_WRS_VXWORKS_MAJOR) && ((_WRS_VXWORKS_MAJOR >= 6) && (_WRS_VXWORKS_MINOR >= 6))
+		#define SET_FILE_PERMISSIONS 1
+	#else
+		#define SET_FILE_PERMISSIONS 0
+	#endif
 #endif
 
 #if SET_FILE_PERMISSIONS
@@ -270,6 +283,7 @@ STATIC int listLock = 0;						/* replaces long-term holding of sr_mutex */
 #define NUM_STATUS_PV_SETS 8
 STATIC int statusPvsInUse[NUM_STATUS_PV_SETS] = {0};
 STATIC epicsMutexId	sr_mutex = NULL;			/* mut(ual) ex(clusion) for list of save sets */
+int mustSetPermissions = 0;                                    /* use fchmod() only if save_restoreSet_FilePermissions is used */
 
 /* Support for manual and programmed operations */
 
@@ -436,6 +450,7 @@ void save_restoreSet_status_prefix(char *prefix) {strNcpy(status_prefix, prefix,
 #if SET_FILE_PERMISSIONS
 void save_restoreSet_FilePermissions(int permissions) {
 	file_permissions = (mode_t)permissions;
+	mustSetPermissions = 1;
 	printf("save_restore: File permissions set to 0%o\n", (unsigned int)file_permissions);
 }
 #endif
@@ -453,6 +468,14 @@ void save_restoreSet_CallbackTimeout(int t) {
 }
 
 /********************************* code *********************************/
+
+int isValid1stPVChar(char chr)
+{
+  return isalpha((int)chr) || isdigit((int)chr) || chr == '_' || chr == '-'
+	  || chr == '+' || chr == ':' || chr == '[' || chr == ']' || chr == '<'
+	  || chr == '>' || chr == ';';
+}
+
 
 int isAbsolute(const char* filename)
 {
@@ -828,7 +851,6 @@ STATIC int save_restore(void)
 	if (save_restoreDebug > 1)
 			printf("save_restore:save_restore: entry; status_prefix='%s'\n", status_prefix);
 
-	opMsgQueue = epicsMessageQueueCreate(OP_MSG_QUEUE_SIZE, OP_MSG_SIZE);
 	epicsTimeGetCurrent(&currTime);
 	last_seq_check = remount_check_time = currTime; /* struct copy */
 
@@ -1608,6 +1630,44 @@ STATIC int check_file(char *file)
 	return(file_state);
 }
 
+/*
+ * Print human readable messages when fchmod enter an exception
+ *
+ */
+void print_chmod_error(int errNumber)
+{
+        char shortMessage[100];
+        char longMessage[3000];
+
+        switch (errNumber) {
+                case EBADF:
+                        strcpy(shortMessage, "EBADF: Descriptor is not valid.");
+                        strcpy(longMessage, "A file descriptor argument was out of range, referred to a file that was not open, or a read or write request was made to a file that is not open for that operation.");
+                        break;
+
+                case EPERM:
+                        strcpy(shortMessage, "EPERM: The operation is not permitted.");
+                        strcpy(longMessage, "You must have appropriate privileges or be the owner of the object or other resource to do the requested operation.");
+                        break;
+
+                case EROFS:
+                        strcpy(shortMessage, "EROFS: Read-only file system.");
+                        strcpy(longMessage, "You have attempted an update operation in a file system that only supports read operations.");
+                        break;
+
+                case EINTR:
+                        strcpy(shortMessage, "EINTR: Interrupted function call.");
+                        strcpy(longMessage, "The function was interrupted by a signal.");
+                        break;
+
+                case EINVAL:
+                        strcpy(shortMessage, "EINVAL: The value specified for the argument is not correct.");
+                        strcpy(longMessage, "A function was passed incorrect argument values, or an operation was attempted on an object and the operation specified is not supported for that type of object.");
+        }
+
+        printf("Error %d - %s\n%s\n", errNumber, shortMessage, longMessage);
+}
+
 
 /*
  * Actually write the file
@@ -1648,10 +1708,16 @@ STATIC int write_it(char *filename, struct chlist *plist)
 		}
 		return(ERROR);
 	} else {
-		int status;
-		/* open() doesn't seem to set file permissions anymore */
-		status = fchmod (filedes, (mode_t) file_permissions);
-		if (status) printf("write_it: fchmod returned %d\n", status);
+		if (mustSetPermissions) {
+			int status;
+			/* open() doesn't seem to set file permissions anymore */
+			status = fchmod (filedes, (mode_t) file_permissions);
+			if (status) {
+				int err = errno;
+				printf("write_it - when changing %s file permission:\n", filename);
+				print_chmod_error(err);
+			}
+		}
 		out_fd = fdopen(filedes, "w");
 	}
 #else
@@ -2148,6 +2214,11 @@ STATIC int create_data_set(
 	if (!save_restore_init) {
 		if ((sr_mutex = epicsMutexCreate()) == 0) {
 			printf("save_restore:create_data_set: could not create list header mutex");
+			return(ERROR);
+		}
+		opMsgQueue = epicsMessageQueueCreate(OP_MSG_QUEUE_SIZE, OP_MSG_SIZE);
+		if (opMsgQueue == NULL) {
+			printf("save_restore:create_data_set: could not create message queue");
 			return(ERROR);
 		}
 		taskID = epicsThreadCreate("save_restore", taskPriority,
@@ -3499,7 +3570,7 @@ STATIC int readReqFile(const char *reqFile, struct chlist *plist, char *macrostr
 			if (save_restoreDebug >= 2) printf("save_restore:readReqFile: calling readReqFile('%s', %p,'%s')\n",
 				templatefile, plist, new_macro);
 			readReqFile(templatefile, plist, new_macro);
-		} else if (isalpha((int)name[0]) || isdigit((int)name[0]) || name[0] == '$') {
+		} else if (isValid1stPVChar(name[0]) || name[0] == '$') {
 			pchannel = (struct channel *)calloc(1,sizeof (struct channel));
 			if (pchannel == (struct channel *)0) {
 				plist->status = SR_STATUS_WARN;

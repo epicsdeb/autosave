@@ -1,3 +1,10 @@
+autosave (5.8-1) unstable; urgency=medium
+
+  * New upstream version 5.8
+  * Bump up versions in library names
+
+ -- Martin Konrad <konrad@frib.msu.edu>  Wed, 29 Nov 2017 14:24:42 -0500
+
 autosave (5.7.1-2) unstable; urgency=medium
 
   * missing rtems deps
