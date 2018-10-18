@@ -1,3 +1,9 @@
+autosave (5.8-2) unstable; urgency=medium
+
+  * Use build profile to enable RTEMS cross build
+
+ -- Martin Konrad <konrad@frib.msu.edu>  Thu, 13 Sep 2018 13:57:26 -0400
+
 autosave (5.8-1) unstable; urgency=medium
 
   * New upstream version 5.8
