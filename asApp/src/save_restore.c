@@ -357,6 +357,16 @@ STATIC char	SR_rebootTime_PV[PV_NAME_LEN] = "";
 STATIC char	SR_rebootTimeStr[STRING_LEN] = "";
 STATIC chid	SR_rebootTime_chid;
 
+/* disable support */
+STATIC char	SR_disable_PV[PV_NAME_LEN] = "";
+STATIC int	SR_disable = 0;
+STATIC chid	SR_disable_chid;
+STATIC char	SR_disableMaxSecs_PV[PV_NAME_LEN] = "";
+STATIC int	SR_disableMaxSecs = 0;
+STATIC chid	SR_disableMaxSecs_chid;
+static epicsTimeStamp disableStart;
+static epicsTimeStamp nullTimeStamp = {0};
+
 volatile int	save_restoreNumSeqFiles = 3;			/* number of sequence files to maintain */
 volatile int	save_restoreSeqPeriodInSeconds = 60;	/* period between sequence-file writes */
 volatile int	save_restoreIncompleteSetsOk = 1;		/* will save/restore incomplete sets? */
@@ -411,6 +421,7 @@ STATIC int request_manual_restore(char *filename, int file_type, char *macrostri
 STATIC void ca_connection_callback(struct connection_handler_args args);      /* qiao: call back function for ca connection of the dataset channels */
 STATIC void ca_disconnect();                                                  /* qiao: disconnect all existing CA channels */
 STATIC void defaultCallback(int status, void *puserPvt);
+STATIC void doPeriodicDatedBackup(struct chlist *plist);
 
 /*** user-callable functions ***/
 
@@ -446,6 +457,16 @@ void save_restoreSet_NumSeqFiles(int numSeqFiles) {save_restoreNumSeqFiles = num
 void save_restoreSet_SeqPeriodInSeconds(int period) {save_restoreSeqPeriodInSeconds = MAX(10, period);}
 void save_restoreSet_IncompleteSetsOk(int ok) {save_restoreIncompleteSetsOk = ok;}
 void save_restoreSet_DatedBackupFiles(int ok) {save_restoreDatedBackupFiles = ok;}
+static int save_restorePeriodicDatedBackups=0;
+static int save_restoreDatedBackupPeriod;
+void save_restoreSet_periodicDatedBackups(int periodInMinutes) {
+	if (periodInMinutes>0) {
+		save_restorePeriodicDatedBackups = 1;
+		save_restoreDatedBackupPeriod = periodInMinutes*60;
+	} else {
+		save_restorePeriodicDatedBackups = 0;
+	}
+}
 void save_restoreSet_status_prefix(char *prefix) {strNcpy(status_prefix, prefix, 30);}
 #if SET_FILE_PERMISSIONS
 void save_restoreSet_FilePermissions(int permissions) {
@@ -842,6 +863,7 @@ STATIC int save_restore(void)
 	char *cp, nameString[FN_LEN];
 	int i, do_seq_check, just_remounted, n, saveNeeded=0;
 	epicsTimeStamp currTime, last_seq_check, remount_check_time, delayStart;
+	epicsTimeStamp lastPeriodicDatedBackup;
 	char datetime[32];
 	double timeDiff;
 	int NFS_managed = save_restoreNFSHostName[0] && save_restoreNFSHostAddr[0] && save_restoreNFSMntPoint[0];
@@ -853,6 +875,7 @@ STATIC int save_restore(void)
 
 	epicsTimeGetCurrent(&currTime);
 	last_seq_check = remount_check_time = currTime; /* struct copy */
+	lastPeriodicDatedBackup = currTime;
 
 	ca_context_create(ca_enable_preemptive_callback);
 
@@ -882,6 +905,17 @@ STATIC int save_restore(void)
 		TATTLE(ca_search(SR_rebootStatus_PV, &SR_rebootStatus_chid), "save_restore: ca_search(%s) returned %s", SR_rebootStatus_PV);
 		TATTLE(ca_search(SR_rebootStatusStr_PV, &SR_rebootStatusStr_chid), "save_restore: ca_search(%s) returned %s", SR_rebootStatusStr_PV);
 		TATTLE(ca_search(SR_rebootTime_PV, &SR_rebootTime_chid), "save_restore: ca_search(%s) returned %s", SR_rebootTime_PV);
+
+		/* disable support */
+		strNcpy(SR_disable_PV, status_prefix, PV_NAME_LEN);
+		strncat(SR_disable_PV, "SR_disable", PV_NAME_LEN-1-strlen(SR_disable_PV));
+		TATTLE(ca_search(SR_disable_PV, &SR_disable_chid), "save_restore: ca_search(%s) returned %s", SR_disable_PV);
+
+		strNcpy(SR_disableMaxSecs_PV, status_prefix, PV_NAME_LEN);
+		strncat(SR_disableMaxSecs_PV, "SR_disableMaxSecs", PV_NAME_LEN-1-strlen(SR_disableMaxSecs_PV));
+		TATTLE(ca_search(SR_disableMaxSecs_PV, &SR_disableMaxSecs_chid), "save_restore: ca_search(%s) returned %s", SR_disableMaxSecs_PV);
+
+
 		if (ca_pend_io(0.5)!=ECA_NORMAL) {
 			printf("save_restore: Can't connect to all status PV(s)\n");
 		}
@@ -916,6 +950,31 @@ STATIC int save_restore(void)
 	while(1) {
 
 		if (save_restore_shutdown) goto shutdown;
+
+		/* disable support */
+		if (CONNECTED(SR_disable_chid)) {
+			ca_get(DBR_LONG, SR_disable_chid, &SR_disable);
+		}
+		if (CONNECTED(SR_disableMaxSecs_chid)) {
+			ca_get(DBR_LONG, SR_disableMaxSecs_chid, &SR_disableMaxSecs);
+		}
+		if (ca_pend_io(0.5) == ECA_NORMAL) {
+			if (SR_disable) {
+				if (disableStart.secPastEpoch==nullTimeStamp.secPastEpoch) {
+					epicsTimeGetCurrent(&disableStart);
+				} else {
+					epicsTimeGetCurrent(&currTime);
+					if (epicsTimeDiffInSeconds(&currTime, &disableStart) > SR_disableMaxSecs) {
+						SR_disable = 0;
+						ca_put(DBR_LONG, SR_disable_chid, &SR_disable);
+						disableStart = nullTimeStamp;
+					}
+				}
+			}
+		}
+		if (SR_disable) {
+			goto disable;
+		}
 
 		SR_status = SR_STATUS_OK;
 		strcpy(SR_statusStr, "Ok");
@@ -1043,10 +1102,21 @@ STATIC int save_restore(void)
 
 			/*** Periodically make sequenced backup of most recent saved file ***/
 			if (do_seq_check && plist->do_backups && (plist->status > SR_STATUS_FAIL)) {
-				if (save_restoreNumSeqFiles && plist->last_save_file &&
+				if (save_restoreNumSeqFiles && plist->last_save_file[0] &&
 					(epicsTimeDiffInSeconds(&currTime, &plist->backup_time) >
 						save_restoreSeqPeriodInSeconds)) {
 					do_seq(plist);
+				}
+			}
+
+			/*** periodicated backups ***/
+			if (save_restorePeriodicDatedBackups) {
+				if (epicsTimeDiffInSeconds(&currTime, &lastPeriodicDatedBackup) >
+						save_restoreDatedBackupPeriod) {
+					if (plist->do_backups) {
+						doPeriodicDatedBackup(plist);
+						lastPeriodicDatedBackup = currTime;
+					}
 				}
 			}
 
@@ -1149,6 +1219,7 @@ STATIC int save_restore(void)
 
 		/*** service client commands and/or sleep for MIN_DELAY ***/
 
+disable:
 		epicsTimeGetCurrent(&delayStart);
 		while (epicsMessageQueueReceiveWithTimeout(opMsgQueue, (void*) &msg, OP_MSG_SIZE, (double)MIN_DELAY) >= 0) {
 			int status=0;
@@ -1367,8 +1438,7 @@ STATIC int connect_list(struct chlist *plist, int verbose)
 	}
 	epicsSnprintf(SR_recentlyStr, STATUS_STR_LEN-1, "%s: %d of %d PV's connected", plist->save_file, n, m);
 	if (verbose) {
-		printf(SR_recentlyStr);
-		printf("\n");
+		printf("%s\n", SR_recentlyStr);
 	}
 
 	return(get_channel_values(plist));
@@ -1779,18 +1849,18 @@ STATIC int write_it(char *filename, struct chlist *plist)
 		}
 
 		errno = 0;
-		if (pchannel->curr_elements <= 1) {
+		if (is_long_string) {
+			/* write first BUF-SIZE-1 characters of long string, so dbrestore doesn't choke. */
+			strNcpy(value_string, pchannel->pArray, BUF_SIZE);
+			value_string[BUF_SIZE-1] = '\0';
+			n = fprintf(out_fd, "%-s\n", value_string);
+		} else if (pchannel->curr_elements <= 1) {
 			/* treat as scalar */
 			if (pchannel->enum_val >= 0) {
 				n = fprintf(out_fd, "%d\n",pchannel->enum_val);
 			} else {
 				n = fprintf(out_fd, "%-s\n", pchannel->value);
 			}
-		} else if (is_long_string) {
-			/* write first BUF-SIZE-1 characters of long string, so dbrestore doesn't choke. */
-			strNcpy(value_string, pchannel->pArray, BUF_SIZE);
-			value_string[BUF_SIZE-1] = '\0';
-			n = fprintf(out_fd, "%-s\n", value_string);
 		} else {
 			/* treat as array */
 			n = SR_write_array_data(out_fd, pchannel->name, (void *)pchannel->pArray, pchannel->curr_elements);
@@ -2134,6 +2204,54 @@ STATIC void do_seq(struct chlist *plist)
 		plist->backup_sequence_num = 0;
 }
 
+STATIC void doPeriodicDatedBackup(struct chlist *plist) {
+	char	save_file[NFS_PATH_LEN+3] = "";
+	char	tmpstr[TMPSTRLEN];
+	char	datetime[32];
+
+	if (save_restoreDebug > 1) {
+		printf("save_restore:doPeriodicDatedBackup: entry\n");
+	}
+
+	fGetDateStr(datetime);
+	/* Make full file names */
+	if (plist->savePathPV_chid) {
+		/* This list's path name comes from a PV */
+		ca_array_get(DBR_STRING,1,plist->savePathPV_chid,tmpstr);
+		ca_pend_io(1.0);
+		if (tmpstr[0] == '\0') return;
+		strNcpy(save_file, tmpstr, sizeof(save_file));
+		if (!isAbsolute(save_file)) {
+			makeNfsPath(save_file, saveRestoreFilePath, save_file);
+		}
+	} else {
+		/* Use standard path name. */
+		strNcpy(save_file, saveRestoreFilePath, sizeof(save_file));
+	}
+
+	if (plist->saveNamePV_chid) {
+		/* This list's file name comes from a PV */
+		ca_array_get(DBR_STRING,1,plist->saveNamePV_chid,tmpstr);
+		ca_pend_io(1.0);
+		if (tmpstr[0] == '\0') return;
+		makeNfsPath(save_file, save_file, tmpstr);
+	} else {
+		/* Use file name constructed from the request file name. */
+		makeNfsPath(save_file, save_file, plist->save_file);
+	}
+
+	strncat(save_file, "_b_", sizeof(save_file)-strlen(save_file)-1);
+	strncat(save_file, datetime, sizeof(save_file)-strlen(save_file)-1);
+	if (save_restoreDebug > 1) {
+		printf("save_restore:doPeriodicDatedBackup: filename is '%s'\n", save_file);
+	}
+	if (write_it(save_file, plist) == ERROR) {
+		printf("*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n");
+		printf("save_restore:doPeriodicDatedBackup: Can't write file. [%s]\n", save_file);
+		printf("*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n");
+	}
+}
+
 /* Called only by the user */
 int set_savefile_name(char *filename, char *save_filename)
 {
@@ -2167,7 +2285,7 @@ int create_periodic_set(char *filename, int period, char *macrostring)
 
 int create_triggered_set(char *filename, char *trigger_channel, char *macrostring)
 {
-	if (trigger_channel && (isalpha((int)trigger_channel[0]) || isdigit((int)trigger_channel[0]))) {
+	if (trigger_channel && isValid1stPVChar((int)trigger_channel[0])) {
 		return(create_data_set(filename, TRIGGERED, 0, trigger_channel, 0, macrostring));
 	}
 	else {
@@ -2447,7 +2565,7 @@ void save_restoreShow(int verbose)
 			printf("    last saved file - %s\n",plist->last_save_file);
 			printf("    %d channel%c not connected (or ca_get failed)\n",plist->not_connected,
 				(plist->not_connected == 1) ? ' ' : 's');
-			if (verbose) {
+			if (verbose && !save_restore_shutdown) {
 				for (pchannel = plist->pchan_list; pchannel != 0; pchannel = pchannel->pnext) {
 					printf("\t%s chid:%p state:%s (max:%ld curr:%ld elements)\t%s", pchannel->name,
 						pchannel->chid, pchannel->chid?ca_state_string[ca_state(pchannel->chid)]:"noChid",
@@ -2727,6 +2845,10 @@ STATIC int request_manual_restore(char *filename, int file_type, char *macrostri
 		return(-1);
 	}
 	strNcpy(msg.filename, filename, OP_MSG_FILENAME_SIZE);
+	if ((macrostring) && (strlen(macrostring) > (OP_MSG_MACRO_SIZE-1))) {
+		printf("request_manual_restore: macro string '%s' is too long for message queue\n", macrostring);
+		return(-1);
+	}
 	if ((macrostring) && (strlen(macrostring)>0)) {
 		strNcpy(msg.macrostring, macrostring, OP_MSG_MACRO_SIZE);
 	} else {
@@ -2988,9 +3110,12 @@ STATIC int manual_array_restore(FILE *inp_fd, char *PVname, chid chanid, char *v
 					while (*bp && (*bp != ELEMENT_END) && (*bp != ESCAPE)) bp++;
 					switch (*bp) {
 					case ELEMENT_END:
-						found = 1; bp++; break;
+						found = 1; 
+						bp++; 
+						break;
 					case ESCAPE:
-						if (*(++bp) == ELEMENT_END) bp++; break;
+						if (*(++bp) == ELEMENT_END)    { bp++; } 
+						break;
 					default:
 						if ((bp = fgets(buffer, BUF_SIZE, inp_fd)) == NULL) {
 							end_of_file = 1;
@@ -3258,7 +3383,7 @@ STATIC int do_manual_restore(char *filename, int file_type, char *macrostring)
 		if (save_restoreDebug >= 5) {
 			printf("save_restore:do_manual_restore: PVname='%s'\n", PVname);
 		}
-		if (isalpha((int)PVname[0]) || isdigit((int)PVname[0])) {
+		if (isValid1stPVChar((int)PVname[0])) {
 			/* handle long string name */
 			strNcpy(realName, PVname, PV_NAME_LEN);
 			is_long_string = 0;
@@ -3860,6 +3985,13 @@ IOCSH_ARG_ARRAY asVerify_Args[3] = {&asVerify_Arg0, &asVerify_Arg1, &asVerify_Ar
 IOCSH_FUNCDEF   asVerify_FuncDef = {"asVerify",3,asVerify_Args};
 static void     asVerify_CallFunc(const iocshArgBuf *args) {asVerify(args[0].sval,args[1].ival,args[2].sval);}
 
+/* void save_restoreSet_periodicDatedBackups(int periodMinutes) */
+IOCSH_ARG       save_restoreSet_periodicDatedBackups_Arg0    = {"periodMinutes",iocshArgInt};
+IOCSH_ARG_ARRAY save_restoreSet_periodicDatedBackups_Args[1] = {&save_restoreSet_periodicDatedBackups_Arg0};
+IOCSH_FUNCDEF   save_restoreSet_periodicDatedBackups_FuncDef = {"save_restoreSet_periodicDatedBackups",1,save_restoreSet_periodicDatedBackups_Args};
+static void     save_restoreSet_periodicDatedBackups_CallFunc(const iocshArgBuf *args) {save_restoreSet_periodicDatedBackups(args[0].ival);}
+
+
 void save_restoreRegister(void)
 {
     iocshRegister(&fdbrestore_FuncDef, fdbrestore_CallFunc);
@@ -3894,6 +4026,7 @@ void save_restoreRegister(void)
     iocshRegister(&save_restoreSet_CAReconnect_FuncDef, save_restoreSet_CAReconnect_CallFunc);
     iocshRegister(&save_restoreSet_CallbackTimeout_FuncDef, save_restoreSet_CallbackTimeout_CallFunc);
     iocshRegister(&asVerify_FuncDef, asVerify_CallFunc);
+	iocshRegister(&save_restoreSet_periodicDatedBackups_FuncDef, save_restoreSet_periodicDatedBackups_CallFunc);
 }
 
 epicsExportRegistrar(save_restoreRegister);
