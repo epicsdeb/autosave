@@ -5,6 +5,8 @@ include $(TOP)/configure/CONFIG
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
 #=============================
 
+USR_CFLAGS += -DUSE_TYPED_RSET
+
 PROD_HOST += asVerify
 asVerify_SRCS	+= asVerify.c verify.c
 asVerify_LIBS	+= ca
@@ -16,9 +18,10 @@ asVerify_LIBS	+= Com
 
 #DBDINC += xxxRecord
 
-# To enable autosaveBuild, use dbLoadRecordsHookRegister.  (But it doesn't
-# appear in EPICS base until 3.14.12.5, so disable by default for now.)
-#USR_CFLAGS += -DDBLOADRECORDSHOOKREGISTER
+# To enable autosaveBuild, use dbLoadRecordsHookRegister().  (Requires EPICS
+# base 3.14.12.5 or later.)
+
+USR_CFLAGS += -DDBLOADRECORDSHOOKREGISTER
 
 # <name>.dbd will be created from <name>Include.dbd
 DBD += as.dbd

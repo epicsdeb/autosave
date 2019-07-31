@@ -7,7 +7,7 @@ Subject: RELEASE
  1 file changed, 1 insertion(+), 2 deletions(-)
 
 diff --git a/configure/RELEASE b/configure/RELEASE
-index 277cf0b..3b221ba 100644
+index f820cc6..f326be0 100644
 --- a/configure/RELEASE
 +++ b/configure/RELEASE
 @@ -5,8 +5,7 @@
