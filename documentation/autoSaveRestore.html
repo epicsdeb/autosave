@@ -8,7 +8,7 @@ content="text/html; charset=iso-8859-1">
 
 <body bgcolor="#FFFFFF">
 
-<h1 align="center">autosave R5-8</h1>
+<h1 align="center">autosave R5-10</h1>
 
 <h2>Table of Contents</h2>
 <ul>
@@ -121,6 +121,11 @@ to be restored only during autosave's pass-0.
 PVs without also saving them, but you can't make these choices for
 individual PVs, only for entire files of PVs. 
 
+<P><li>You can enable and disable automated saves for a user specified time.
+(If the user neglects to re-enable saving, you can arrange for the enable to
+happen after a specified time.)  Manual saves (notably, configMenu) are not
+disabled when automated saves are disabled.  (This is controlled by PVs.
+See the save_restore display files.)
 </ul>
 
 
@@ -317,8 +322,8 @@ and which are to be restored after record initialization (pass 1), using the
 commands set_pass&lt;N&gt;_restoreFile(), as in this example:
 
 <pre>
-	set_pass0_restoreFile("auto_settings.req", "P=xxx:")
-	set_pass1_restoreFile("auto_settings.req", "P=xxx:")
+	set_pass0_restoreFile("auto_settings.sav", "P=xxx:")
+	set_pass1_restoreFile("auto_settings.sav", "P=xxx:")
 </pre>
 
 (Note the macrostring is optional, and a new feature of autosave 5.4.)
@@ -328,13 +333,14 @@ than 4.4, autosave would attempt to restore  "auto_positions.sav" and "auto_sett
 no restore files had been specified.  Beginning with version 4.5, only files specified in
 calls to set_pass<i>n</i>_restoreFile() are restored.
 
-<P>If you specify only a file name, not a path, to set_pass&lt;n&gt;_restoreFile(), autosave
-will prepend the path specified in set_savefile_path().  This is the most common way to
-specify a restore file.
+<P>If the first argument to set_pass<i>n</i>_restoreFile() is a string that
+doesn't begin with '/', autosave will prepend the path specified in
+set_savefile_path().  The most common way to specify a restore file is simply to
+specify its name, without any path information.
 
-<P>Beginning with autosave 5.4, if you specify a full path beginning with '/', autosave will
-not prepend anything to it.  (Also, autosave will not write a restore-time backup of the file
-in this case.) 
+<P>Beginning with autosave 5.4, if you specify a full path (a string that
+begins with '/'), autosave will not prepend anything to it.  (Also, autosave
+will not write a restore-time backup of the file in this case.) 
 
 <P>To disable boot-time restore completely, delete or comment out all
 <code>set_pass<i>n</i>_restoreFile()</code> calls.
@@ -1004,7 +1010,16 @@ autosaved.
 
 </dl>
 
-<p><h3>asApp/op/adl</h3>
+<p><h3>asApp/op/adl <i>(also ../ui, ../edl, ../opi)</i></h3>
+<P><table width="100%">
+<tr>
+<td><center><IMG SRC="save_restoreStatus.adl.jpg" NAME="save_restoreStatus.adl">
+<br>save_restoreStatus.adl
+<td><center><IMG SRC="save_restoreStatus_more.adl.jpg" NAME="save_restoreStatus_more.adl">
+<br>save_restoreStatus_more.adl
+</tr>
+</table>
+
 <dl>
 <dt>save_restoreStatus*.adl, save_restoreStatusLegend.adl,
 save_restoreStatus_more.adl, save_restoreStatus_tiny.adl,
@@ -1235,6 +1250,16 @@ void *puser);</code>
 	from which PV values are restored) will have the suffix '.bu',
 	and will be overwritten every reboot.  If nonzero, each reboot will
 	leave behind its own backup file.
+	<P>This function can be called at any time.
+
+<!-------------------------------------------------------------------------------------->
+<P><dt><code>void save_restoreSet_periodicDatedBackups(int periodInMinutes)</code>
+<dd>Enables periodic dated backups, and sets the period.  If periodInMinutes <= 0,
+	disable periodic dated backups.  When enabled, autosave will write files
+	named like this "auto_settings.sav_b_180131-122100", for those save sets
+	that are eligible for backups.  Save sets are eligible for backups if neither
+	their file path nor their file name comes from a PV, and if they are not configMenu
+	save sets.
 	<P>This function can be called at any time.
 
 <!-------------------------------------------------------------------------------------->
