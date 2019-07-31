@@ -16,7 +16,7 @@ Vcs-Browser: https://github.com/epicsdeb/autosave
 
 Package: epics-autosave-dev
 Architecture: any
-Depends: libautosave5.9 (= ${binary:Version}),
+Depends: libautosave5.10 (= ${binary:Version}),
          ${shlibs:Depends}, ${misc:Depends},
          ${epics:Depends},
 Conflicts: epics-synapps,
@@ -25,7 +25,7 @@ Description: Bump-less reboot for IOCs
  .
  This package contains headers and libraries needed at build time.
 
-Package: libautosave5.9
+Package: libautosave5.10
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
 Conflicts: epics-synapps,
