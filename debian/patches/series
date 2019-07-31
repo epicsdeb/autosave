@@ -1,4 +1,2 @@
 0001-RELEASE.patch
-0002-fixup-format-warning.patch
-0003-install-db-and-req-files.patch
 0005-autosave-support-RTEMS-4.10-mount.patch
